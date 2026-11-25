@@ -1,0 +1,3 @@
+# Только для пересборки тестового набора (tools/build_testset.py), в Docker-образ не входит
+numpy
+opencv-contrib-python-headless   # нужен модуль dnn_superres

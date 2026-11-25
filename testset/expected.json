@@ -1,0 +1,309 @@
+{
+  "description": "Тестовый набор из документа «Требование к фото на пропуск». Фото нарезаны из иллюстраций документа, значки ✘/✔ удалены, разрешение повышено EDSR x4.",
+  "rules": "expect — пункты, результат которых должен совпасть; expect_failed_any — хотя бы один failed; expect_overall — итоговый вердикт (good → successed, bad → failed).",
+  "cases": [
+    {
+      "id": "01_format_bad_head_too_large",
+      "file": "images/01_format_bad_head_too_large.jpg",
+      "requirement": "format",
+      "label": "bad",
+      "description": "Голова слишком крупная: лицо занимает почти весь кадр",
+      "source": "Требование к фото на пропуск.docx: media/image1.png",
+      "expect_overall": "failed",
+      "expect": {
+        "format": "failed"
+      }
+    },
+    {
+      "id": "02_format_bad_head_too_small",
+      "file": "images/02_format_bad_head_too_small.jpg",
+      "requirement": "format",
+      "label": "bad",
+      "description": "Голова слишком мелкая: видны грудь и галстук, много фона",
+      "source": "Требование к фото на пропуск.docx: media/image1.png",
+      "expect_overall": "failed",
+      "expect": {
+        "format": "failed"
+      }
+    },
+    {
+      "id": "03_format_good_ok",
+      "file": "images/03_format_good_ok.jpg",
+      "requirement": "format",
+      "label": "good",
+      "description": "Голова занимает 32–36 мм из 45",
+      "source": "Требование к фото на пропуск.docx: media/image1.png",
+      "expect_overall": "successed",
+      "expect": {
+        "format": "successed"
+      }
+    },
+    {
+      "id": "04_quality_bad_blurry",
+      "file": "images/04_quality_bad_blurry.jpg",
+      "requirement": "quality",
+      "label": "bad",
+      "description": "Снимок размыт",
+      "source": "Требование к фото на пропуск.docx: media/image2.png",
+      "expect_overall": "failed",
+      "expect": {
+        "quality": "failed"
+      }
+    },
+    {
+      "id": "05_quality_bad_stains_folds",
+      "file": "images/05_quality_bad_stains_folds.jpg",
+      "requirement": "quality",
+      "label": "bad",
+      "description": "Пятна и заломы на фото",
+      "source": "Требование к фото на пропуск.docx: media/image2.png",
+      "expect_overall": "failed",
+      "expect": {
+        "quality": "failed"
+      }
+    },
+    {
+      "id": "06_quality_good_ok",
+      "file": "images/06_quality_good_ok.jpg",
+      "requirement": "quality",
+      "label": "good",
+      "description": "Чёткий снимок без дефектов",
+      "source": "Требование к фото на пропуск.docx: media/image2.png",
+      "expect_overall": "successed",
+      "expect": {
+        "quality": "successed"
+      }
+    },
+    {
+      "id": "07_lighting_color_bad_too_dark",
+      "file": "images/07_lighting_color_bad_too_dark.jpg",
+      "requirement": "lighting_color",
+      "label": "bad",
+      "description": "Затемнение: лицо слишком тёмное",
+      "source": "Требование к фото на пропуск.docx: media/image3.png",
+      "expect_overall": "failed",
+      "expect": {
+        "lighting_color": "failed"
+      }
+    },
+    {
+      "id": "08_lighting_color_bad_overexposed",
+      "file": "images/08_lighting_color_bad_overexposed.jpg",
+      "requirement": "lighting_color",
+      "label": "bad",
+      "description": "Пересвет: лицо выбелено",
+      "source": "Требование к фото на пропуск.docx: media/image3.png",
+      "expect_overall": "failed",
+      "expect": {
+        "lighting_color": "failed"
+      }
+    },
+    {
+      "id": "09_lighting_color_good_ok",
+      "file": "images/09_lighting_color_good_ok.jpg",
+      "requirement": "lighting_color",
+      "label": "good",
+      "description": "Равномерный свет, естественный цвет",
+      "source": "Требование к фото на пропуск.docx: media/image3.png",
+      "expect_overall": "successed",
+      "expect": {
+        "lighting_color": "successed"
+      }
+    },
+    {
+      "id": "10_background_bad_nature",
+      "file": "images/10_background_bad_nature.jpg",
+      "requirement": "background",
+      "label": "bad",
+      "description": "Фон — листва и трава, не однотонный",
+      "source": "Требование к фото на пропуск.docx: media/image4.png",
+      "expect_overall": "failed",
+      "expect": {
+        "background": "failed"
+      }
+    },
+    {
+      "id": "11_background_good_ok",
+      "file": "images/11_background_good_ok.jpg",
+      "requirement": "background",
+      "label": "good",
+      "description": "Однотонный светло-серый фон",
+      "source": "Требование к фото на пропуск.docx: media/image5.png",
+      "expect_overall": "successed",
+      "expect": {
+        "background": "successed"
+      }
+    },
+    {
+      "id": "12_headwear_bad_panama",
+      "file": "images/12_headwear_bad_panama.jpg",
+      "requirement": "headwear",
+      "label": "bad",
+      "description": "Панама на голове",
+      "source": "Требование к фото на пропуск.docx: media/image6.png",
+      "expect_overall": "failed",
+      "expect": {
+        "headwear": "failed"
+      }
+    },
+    {
+      "id": "13_headwear_bad_cap",
+      "file": "images/13_headwear_bad_cap.jpg",
+      "requirement": "headwear",
+      "label": "bad",
+      "description": "Кепка на голове",
+      "source": "Требование к фото на пропуск.docx: media/image6.png",
+      "expect_overall": "failed",
+      "expect": {
+        "headwear": "failed"
+      }
+    },
+    {
+      "id": "14_headwear_good_ok",
+      "file": "images/14_headwear_good_ok.jpg",
+      "requirement": "headwear",
+      "label": "good",
+      "description": "Без головного убора",
+      "source": "Требование к фото на пропуск.docx: media/image6.png",
+      "expect_overall": "successed",
+      "expect": {
+        "headwear": "successed"
+      }
+    },
+    {
+      "id": "15_head_position_bad_other_person",
+      "file": "images/15_head_position_bad_other_person.jpg",
+      "requirement": "head_position",
+      "label": "bad",
+      "description": "В кадре виден другой человек, который держит ребёнка (пропорции исходные)",
+      "source": "Требование к фото на пропуск.docx: media/image7.png",
+      "expect_overall": "failed",
+      "expect_failed_any": [
+        "head_position",
+        "background",
+        "face_eyes"
+      ]
+    },
+    {
+      "id": "16_head_position_bad_hands_hold_head",
+      "file": "images/16_head_position_bad_hands_hold_head.jpg",
+      "requirement": "head_position",
+      "label": "bad",
+      "description": "Голову ребёнка поддерживают руками",
+      "source": "Требование к фото на пропуск.docx: media/image7.png",
+      "expect_overall": "failed",
+      "expect_failed_any": [
+        "head_position",
+        "face_eyes"
+      ]
+    },
+    {
+      "id": "17_head_position_good_ok",
+      "file": "images/17_head_position_good_ok.jpg",
+      "requirement": "head_position",
+      "label": "good",
+      "description": "Голова прямо, анфас",
+      "source": "Требование к фото на пропуск.docx: media/image7.png",
+      "expect_overall": "successed",
+      "expect": {
+        "head_position": "successed"
+      }
+    },
+    {
+      "id": "18_gaze_expression_bad_looking_aside",
+      "file": "images/18_gaze_expression_bad_looking_aside.jpg",
+      "requirement": "gaze_expression",
+      "label": "bad",
+      "description": "Взгляд в сторону от объектива",
+      "source": "Требование к фото на пропуск.docx: media/image8.png",
+      "expect_overall": "failed",
+      "expect": {
+        "gaze_expression": "failed"
+      }
+    },
+    {
+      "id": "19_gaze_expression_good_ok",
+      "file": "images/19_gaze_expression_good_ok.jpg",
+      "requirement": "gaze_expression",
+      "label": "good",
+      "description": "Взгляд в объектив, нейтральное выражение",
+      "source": "Требование к фото на пропуск.docx: media/image9.png",
+      "expect_overall": "successed",
+      "expect": {
+        "gaze_expression": "successed"
+      }
+    },
+    {
+      "id": "20_face_eyes_bad_hair_covers_face",
+      "file": "images/20_face_eyes_bad_hair_covers_face.jpg",
+      "requirement": "face_eyes",
+      "label": "bad",
+      "description": "Волосы закрывают часть лица и глаз",
+      "source": "Требование к фото на пропуск.docx: media/image10.png",
+      "expect_overall": "failed",
+      "expect": {
+        "face_eyes": "failed"
+      }
+    },
+    {
+      "id": "21_face_eyes_bad_eyes_closed",
+      "file": "images/21_face_eyes_bad_eyes_closed.jpg",
+      "requirement": "face_eyes",
+      "label": "bad",
+      "description": "Глаза закрыты",
+      "source": "Требование к фото на пропуск.docx: media/image10.png",
+      "expect_overall": "failed",
+      "expect": {
+        "face_eyes": "failed"
+      }
+    },
+    {
+      "id": "22_face_eyes_good_ok",
+      "file": "images/22_face_eyes_good_ok.jpg",
+      "requirement": "face_eyes",
+      "label": "good",
+      "description": "Лицо открыто, глаза открыты",
+      "source": "Требование к фото на пропуск.docx: media/image10.png",
+      "expect_overall": "successed",
+      "expect": {
+        "face_eyes": "successed"
+      }
+    },
+    {
+      "id": "23_glasses_bad_dark_lenses",
+      "file": "images/23_glasses_bad_dark_lenses.jpg",
+      "requirement": "glasses",
+      "label": "bad",
+      "description": "Тёмные стёкла закрывают глаза",
+      "source": "Требование к фото на пропуск.docx: media/image11.png",
+      "expect_overall": "failed",
+      "expect": {
+        "glasses": "failed"
+      }
+    },
+    {
+      "id": "24_glasses_bad_glare",
+      "file": "images/24_glasses_bad_glare.jpg",
+      "requirement": "glasses",
+      "label": "bad",
+      "description": "Блики на стёклах очков",
+      "source": "Требование к фото на пропуск.docx: media/image11.png",
+      "expect_overall": "failed",
+      "expect": {
+        "glasses": "failed"
+      }
+    },
+    {
+      "id": "25_glasses_good_ok",
+      "file": "images/25_glasses_good_ok.jpg",
+      "requirement": "glasses",
+      "label": "good",
+      "description": "Тонкая оправа, прозрачные стёкла без бликов",
+      "source": "Требование к фото на пропуск.docx: media/image11.png",
+      "expect_overall": "successed",
+      "expect": {
+        "glasses": "successed"
+      }
+    }
+  ]
+}
