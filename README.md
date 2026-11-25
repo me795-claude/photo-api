@@ -1,6 +1,6 @@
 # Photo-API — проверка фото на пропуск через LLM
 
-Сервис принимает фотографию, отправляет её в LLM через API Open WebUI и возвращает JSON с результатом по каждому из 9 требований документа «Требование к фото на пропуск». Архитектура описана в [Схема проверки фото через LLM.md](Схема%20проверки%20фото%20через%20LLM.md).
+Сервис принимает фотографию, отправляет её в LLM через OpenAI-совместимый API (внутренний шлюз LLM `llm-api.hse.ru` или Open WebUI) и возвращает JSON с результатом по каждому из 9 требований документа «Требование к фото на пропуск». Архитектура описана в [Схема проверки фото через LLM.md](Схема%20проверки%20фото%20через%20LLM.md).
 
 ```json
 {
@@ -21,7 +21,7 @@
 cp .env.example .env
 ```
 
-В `.env` укажите как минимум `OPENWEBUI_URL`, `OPENWEBUI_API_KEY` и `LLM_MODEL`, затем:
+В `.env` укажите как минимум `LLM_API_KEY` (адрес шлюза и модель уже заданы), затем:
 
 ```bash
 docker compose up -d --build
@@ -29,7 +29,7 @@ docker compose up -d --build
 
 - Веб-страница загрузки: http://localhost:8000
 - Swagger: http://localhost:8000/docs
-- Связь с Open WebUI: http://localhost:8000/health/llm
+- Связь с LLM: http://localhost:8000/health/llm
 
 ### API
 
@@ -59,7 +59,7 @@ docker compose run --rm -v "$PWD/photos:/photos:ro" photo-check python -m app.cl
 
 ### Проверка без настоящей LLM
 
-В `.env` поставьте `OPENWEBUI_URL=http://mock-llm:3000`, затем:
+В `.env` поставьте `LLM_BASE_URL=http://mock-llm:3000`, затем:
 
 ```bash
 docker compose --profile mock up -d --build
@@ -71,9 +71,15 @@ docker compose --profile mock up -d --build
 
 | Переменная | По умолчанию | Назначение |
 |---|---|---|
-| `OPENWEBUI_URL` | `http://host.docker.internal:3000` | адрес Open WebUI без `/api` |
-| `OPENWEBUI_API_KEY` | — | ключ `sk-...` (Settings → Account → API Keys) |
-| `OPENWEBUI_VERIFY_SSL` | `true` | проверять TLS-сертификат |
+| `LLM_BASE_URL` | `https://llm-api.hse.ru` | адрес шлюза LLM или Open WebUI (без пути) |
+| `LLM_CHAT_PATH` | `/v1/chat/completions` | путь чата; для Open WebUI — `/api/chat/completions` |
+| `LLM_MODELS_PATH` | `/v1/models` | путь списка моделей; для Open WebUI — `/api/models` |
+| `LLM_API_KEY` | — | ключ (`Authorization: Bearer ...`) |
+| `LLM_STREAM` | `true` | потоковый ответ (SSE); для шлюза обязателен — без потока он рвёт соединение через ~30 с |
+| `LLM_VERIFY_SSL` | `true` | проверять TLS-сертификат |
+| `HTTPS_PROXY`, `NO_PROXY` | — | корпоративный прокси, если шлюз доступен только через него |
+
+Старые имена `OPENWEBUI_URL`, `OPENWEBUI_API_KEY`, `OPENWEBUI_VERIFY_SSL` тоже понимаются.
 | `LLM_MODEL` | `qwen3.8-flash-next` | модель с поддержкой изображений |
 | `LLM_RESPONSE_FORMAT` | `json_schema` | `json_schema` / `json_object` / `none`; при отказе модели — автоматический откат |
 | `LLM_MAX_RETRIES` | `2` | повторы, если ответ не по схеме или сервер вернул 429/5xx |
@@ -90,7 +96,7 @@ docker compose --profile mock up -d --build
 
 1. Фото поворачивается по EXIF, уменьшается до `IMAGE_MAX_SIDE` и кодируется в JPEG.
 2. **Проверки кодом** (`app/local_checks.py`): пропорции кадра, цветное ли фото, пересвет/затемнение лица, резкость. Они могут только перевести пункт в `failed`.
-3. **LLM** (`app/llm.py`): `POST /api/chat/completions`, фото — `image_url` с `data:image/jpeg;base64,...`, строгая JSON Schema ответа. Ответ очищается от `<think>` и markdown, проверяется (все 9 пунктов, без повторов). Если ответ не по схеме — модель переспрашивается с описанием ошибки.
+3. **LLM** (`app/llm.py`): `POST {LLM_BASE_URL}{LLM_CHAT_PATH}` (по умолчанию потоком, SSE), фото — `image_url` с `data:image/jpeg;base64,...`, строгая JSON Schema ответа. Ответ очищается от `<think>` и markdown, проверяется (все 9 пунктов, без повторов). Если ответ не по схеме — модель переспрашивается с описанием ошибки.
 4. Итог: результат LLM + проверки кодом; `overall = successed`, только если все 9 пунктов пройдены.
 
 ## Тестовый набор
@@ -114,7 +120,10 @@ python tools/build_testset.py --docx "Требование к фото на пр
 
 ## Перед запуском с настоящей LLM
 
-- У модели в Open WebUI включена **Vision** (Admin → Settings → Models → модель → Capabilities). Иначе картинка не дойдёт до модели.
+- Модель принимает изображения (`image_url`). Для Open WebUI у модели должна быть включена **Vision** (Admin → Settings → Models → Capabilities).
 - API-ключи разрешены администратором (Admin → Settings → General → Enable API Keys).
-- Если Open WebUI не на этой машине — укажите его адрес в `OPENWEBUI_URL`.
+- Контейнер должен иметь доступ к шлюзу. Проверка из контейнера:
+  `docker compose exec photo-check python -c "import os,httpx; print(httpx.get(os.environ['LLM_BASE_URL']+'/v1/models', headers={'Authorization':'Bearer '+os.environ['LLM_API_KEY']}, timeout=10).status_code)"`.
+  Если с хоста шлюз отвечает, а из контейнера нет — нужен VPN/DNS внутренней сети или `HTTPS_PROXY`.
+- В ответе сервиса `meta.gateway` содержит `x-request-id` и фактическую модель — их можно передать команде шлюза.
 - `pplx-embed-v1-4b` и `nemotron-rerank-1b-v` — текстовые модели, в проверке фото не используются.

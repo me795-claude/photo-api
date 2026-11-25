@@ -15,7 +15,8 @@ from .service import InvalidImageError, PhotoChecker
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 settings = load_settings()
-logging.getLogger("photo_check").info("Open WebUI: %s, модель: %s, ключ: %s", settings.base_url, settings.model,
+logging.getLogger("photo_check").info("LLM: %s (поток: %s), модель: %s, ключ: %s", settings.chat_url,
+                                      "да" if settings.stream else "нет", settings.model,
                                       "задан" if settings.api_key else "НЕ задан")
 checker = PhotoChecker(settings)
 app = FastAPI(title="Photo-API: проверка фото на пропуск", version="1.0")
@@ -23,16 +24,16 @@ app = FastAPI(title="Photo-API: проверка фото на пропуск", 
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "model": settings.model, "openwebui": settings.base_url}
+    return {"status": "ok", "model": settings.model, "llm_url": settings.chat_url, "stream": settings.stream}
 
 
 @app.get("/health/llm")
 async def health_llm():
-    """Проверка связи с Open WebUI и наличия модели."""
+    """Проверка связи с LLM (список моделей) и наличия нужной модели."""
     try:
         models = await checker.llm.list_models()
     except Exception as e:  # noqa: BLE001
-        raise HTTPException(502, f"Open WebUI недоступен по адресу {settings.models_url}: {e!r}")
+        raise HTTPException(502, f"LLM недоступна по адресу {settings.models_url}: {e!r}")
     ids = [m.get("id") for m in models if isinstance(m, dict)]
     return {"status": "ok" if settings.model in ids else "model_not_found", "model": settings.model, "available": ids}
 

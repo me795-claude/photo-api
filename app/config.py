@@ -34,12 +34,24 @@ def _json(name: str) -> Dict[str, Any]:
     return value
 
 
+def _env(*names: str, default: str = "") -> str:
+    """Первая заданная переменная из списка (новые имена LLM_* и старые OPENWEBUI_*)."""
+    for name in names:
+        value = os.getenv(name)
+        if value not in (None, ""):
+            return value
+    return default
+
+
 @dataclass(frozen=True)
 class Settings:
-    # Подключение к Open WebUI
+    # Подключение к LLM (OpenAI-совместимый API: шлюз LLM или Open WebUI)
     base_url: str
     api_key: str
     model: str
+    chat_path: str = "/v1/chat/completions"
+    models_path: str = "/v1/models"
+    stream: bool = True
     verify_ssl: bool = True
     timeout: float = 180.0
 
@@ -65,11 +77,11 @@ class Settings:
 
     @property
     def chat_url(self) -> str:
-        return self.base_url.rstrip("/") + "/api/chat/completions"
+        return self.base_url.rstrip("/") + "/" + self.chat_path.lstrip("/")
 
     @property
     def models_url(self) -> str:
-        return self.base_url.rstrip("/") + "/api/models"
+        return self.base_url.rstrip("/") + "/" + self.models_path.lstrip("/")
 
 
 def load_settings() -> Settings:
@@ -77,10 +89,13 @@ def load_settings() -> Settings:
     if fmt not in {"json_schema", "json_object", "none"}:
         raise ValueError("LLM_RESPONSE_FORMAT: допустимо json_schema | json_object | none")
     return Settings(
-        base_url=os.getenv("OPENWEBUI_URL", "http://localhost:3000"),
-        api_key=os.getenv("OPENWEBUI_API_KEY", ""),
+        base_url=_env("LLM_BASE_URL", "OPENWEBUI_URL", default="https://llm-api.hse.ru"),
+        api_key=_env("LLM_API_KEY", "OPENWEBUI_API_KEY"),
         model=os.getenv("LLM_MODEL", "qwen3.8-flash-next"),
-        verify_ssl=_bool("OPENWEBUI_VERIFY_SSL", True),
+        chat_path=_env("LLM_CHAT_PATH", default="/v1/chat/completions"),
+        models_path=_env("LLM_MODELS_PATH", default="/v1/models"),
+        stream=_bool("LLM_STREAM", True),
+        verify_ssl=_bool("LLM_VERIFY_SSL", _bool("OPENWEBUI_VERIFY_SSL", True)),
         timeout=_float("LLM_TIMEOUT", 180.0),
         temperature=_float("LLM_TEMPERATURE", 0.0),
         max_tokens=_int("LLM_MAX_TOKENS", 2000),

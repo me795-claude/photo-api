@@ -1,14 +1,14 @@
 # Запуск сервиса:          docker compose up -d --build     → http://localhost:8000
 # Прогон тестового набора: docker compose run --rm testset
 # Без настоящей LLM:       docker compose --profile mock up -d mock-llm
-#                          (и в .env: OPENWEBUI_URL=http://mock-llm:3000)
+#                          (и в .env: LLM_BASE_URL=http://mock-llm:3000)
 
 x-app: &app
   build: .
   image: photo-api:latest
   env_file: .env
   extra_hosts:
-    - "host.docker.internal:host-gateway"   # доступ к Open WebUI на хост-машине (Linux)
+    - "host.docker.internal:host-gateway"   # доступ к сервисам на хост-машине (Linux)
 
 services:
   photo-check:

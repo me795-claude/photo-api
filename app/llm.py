@@ -107,13 +107,53 @@ def parse_checks(text: str) -> List[Dict[str, str]]:
 
 # ---------------------------------------------------------------- клиент
 
-class OpenWebUIClient:
+# Заголовки шлюза, полезные для разбора проблем (Bifrost и др.)
+_TRACE_HEADERS = ("x-request-id", "x-bifrost-trace-id", "x-bifrost-resolved-model", "x-bifrost-routing-info-key")
+
+
+class _Reply:
+    """Результат одного HTTP-запроса: статус, заголовки, текст ответа модели или тело ошибки."""
+
+    def __init__(self, status: int, headers: httpx.Headers, text: str):
+        self.status, self.headers, self.text = status, headers, text
+
+    @property
+    def trace(self) -> Dict[str, str]:
+        return {h: self.headers[h] for h in _TRACE_HEADERS if h in self.headers}
+
+
+def _sse_content(lines) -> Tuple[str, Optional[str]]:
+    """Собирает текст из строк SSE «data: {...}». Возвращает (текст, ошибка-из-потока)."""
+    parts: List[str] = []
+    for line in lines:
+        if not line.startswith("data:"):
+            continue
+        chunk = line[5:].strip()
+        if not chunk or chunk == "[DONE]":
+            continue
+        try:
+            event = json.loads(chunk)
+        except json.JSONDecodeError:
+            continue
+        if event.get("error"):
+            return "".join(parts), str(event["error"])[:500]
+        for choice in event.get("choices") or []:  # служебные события без choices пропускаем
+            delta = choice.get("delta") or choice.get("message") or {}
+            if delta.get("content"):
+                parts.append(delta["content"])
+    return "".join(parts), None
+
+
+class LLMClient:
+    """Клиент OpenAI-совместимого chat/completions: шлюз LLM (/v1/...) или Open WebUI (/api/...)."""
+
     def __init__(self, settings: Settings):
         self.s = settings
         self._format: Optional[str] = settings.response_format  # может откатиться при 400
 
-    def _headers(self) -> Dict[str, str]:
-        h = {"Content-Type": "application/json", "Accept": "application/json"}
+    def _headers(self, stream: bool = False) -> Dict[str, str]:
+        h = {"Content-Type": "application/json",
+             "Accept": "text/event-stream" if stream else "application/json"}
         if self.s.api_key:
             h["Authorization"] = f"Bearer {self.s.api_key}"
         return h
@@ -121,7 +161,7 @@ class OpenWebUIClient:
     def _payload(self, messages: List[Dict[str, Any]], fmt: Optional[str]) -> Dict[str, Any]:
         payload: Dict[str, Any] = {
             "model": self.s.model,
-            "stream": False,
+            "stream": self.s.stream,
             "temperature": self.s.temperature,
             "max_tokens": self.s.max_tokens,
             "seed": self.s.seed,
@@ -138,27 +178,12 @@ class OpenWebUIClient:
         return payload
 
     @staticmethod
-    def _read_content(resp: httpx.Response) -> str:
-        """Текст ответа модели — и для обычного JSON, и для SSE (если админ включил стриминг)."""
-        ctype = resp.headers.get("content-type", "")
-        if "text/event-stream" in ctype:
-            parts: List[str] = []
-            for line in resp.text.splitlines():
-                if not line.startswith("data:"):
-                    continue
-                chunk = line[5:].strip()
-                if not chunk or chunk == "[DONE]":
-                    continue
-                try:
-                    event = json.loads(chunk)
-                except json.JSONDecodeError:
-                    continue
-                for choice in event.get("choices") or []:  # первое событие может быть {"sources": ...}
-                    delta = choice.get("delta") or choice.get("message") or {}
-                    if delta.get("content"):
-                        parts.append(delta["content"])
-            return "".join(parts)
-
+    def _json_content(resp: httpx.Response) -> str:
+        if "text/event-stream" in resp.headers.get("content-type", ""):
+            text, err = _sse_content(resp.text.splitlines())
+            if err:
+                raise ResponseValidationError(f"ошибка в потоке ответа: {err}")
+            return text
         data = resp.json()
         try:
             content = data["choices"][0]["message"]["content"]
@@ -167,6 +192,28 @@ class OpenWebUIClient:
         if isinstance(content, list):  # контент частями
             content = "".join(p.get("text", "") for p in content if isinstance(p, dict))
         return content or ""
+
+    async def _send(self, client: httpx.AsyncClient, payload: Dict[str, Any]) -> _Reply:
+        """Один запрос. В потоковом режиме текст собирается по мере прихода событий:
+        шлюз без потока рвёт долгие соединения (~30 с)."""
+        if not payload.get("stream"):
+            resp = await client.post(self.s.chat_url, headers=self._headers(), json=payload)
+            if resp.status_code >= 400:
+                return _Reply(resp.status_code, resp.headers, resp.text)
+            return _Reply(resp.status_code, resp.headers, self._json_content(resp))
+
+        async with client.stream("POST", self.s.chat_url, headers=self._headers(stream=True), json=payload) as resp:
+            if resp.status_code >= 400:
+                body = (await resp.aread()).decode("utf-8", "replace")
+                return _Reply(resp.status_code, resp.headers, body)
+            if "text/event-stream" not in resp.headers.get("content-type", ""):
+                await resp.aread()  # сервер ответил без потока — разбираем обычный JSON
+                return _Reply(resp.status_code, resp.headers, self._json_content(resp))
+            lines = [line async for line in resp.aiter_lines()]
+        text, err = _sse_content(lines)
+        if err:
+            return _Reply(502, resp.headers, f"ошибка в потоке ответа: {err}")
+        return _Reply(resp.status_code, resp.headers, text)
 
     async def list_models(self) -> List[Dict[str, Any]]:
         async with httpx.AsyncClient(timeout=30, verify=self.s.verify_ssl) as client:
@@ -187,51 +234,64 @@ class OpenWebUIClient:
 
         attempts = 0
         last_error = "нет ответа"
+        connect_failed = False
+        trace: Dict[str, str] = {}
         started = time.monotonic()
         async with httpx.AsyncClient(timeout=self.s.timeout, verify=self.s.verify_ssl) as client:
             while attempts <= self.s.max_retries:
                 attempts += 1
                 fmt = self._format
                 try:
-                    resp = await client.post(self.s.chat_url, headers=self._headers(),
-                                             json=self._payload(messages, fmt))
-                except httpx.HTTPError as e:
-                    last_error = f"ошибка соединения с {self.s.chat_url}: {e!r}"
+                    reply = await self._send(client, self._payload(messages, fmt))
+                except ResponseValidationError as e:  # сервер ответил без потока, но JSON не тот
+                    reply = _Reply(200, httpx.Headers(), "")
+                    last_error = str(e)
+                except httpx.ConnectError as e:
+                    connect_failed = True
+                    last_error = f"не удалось подключиться к {self.s.chat_url}: {e!r}"
                     log.warning("попытка %d: %s", attempts, last_error)
                     await asyncio.sleep(min(2 ** attempts, 10))
                     continue
+                except httpx.HTTPError as e:
+                    last_error = f"сетевая ошибка при запросе к {self.s.chat_url}: {type(e).__name__}: {e}"
+                    log.warning("попытка %d: %s", attempts, last_error)
+                    await asyncio.sleep(min(2 ** attempts, 10))
+                    continue
+                trace = reply.trace or trace
 
-                # Модель/бэкенд не поддерживает response_format — откатываемся и пробуем снова
+                # Модель/шлюз не поддерживает response_format — откатываемся и пробуем снова
                 # (если 400 по другой причине — дойдём до "none" и получим исходную ошибку)
-                if resp.status_code in (400, 422) and fmt in ("json_schema", "json_object"):
+                if reply.status in (400, 422) and fmt in ("json_schema", "json_object"):
                     nxt = _FORMAT_FALLBACK[fmt]
                     log.warning("response_format=%s отклонён (HTTP %s: %s), пробую %s",
-                                fmt, resp.status_code, resp.text[:200], nxt)
+                                fmt, reply.status, reply.text[:200], nxt)
                     self._format = nxt
                     attempts -= 1  # смена формата не считается попыткой
                     continue
 
-                if resp.status_code in (401, 403):
-                    raise LLMError(f"доступ запрещён (HTTP {resp.status_code}): проверьте OPENWEBUI_API_KEY")
-                if resp.status_code == 404:
-                    raise LLMError(f"HTTP 404: проверьте OPENWEBUI_URL и LLM_MODEL ({resp.text[:200]})")
-                if resp.status_code == 429 or resp.status_code >= 500:
-                    last_error = f"HTTP {resp.status_code}: {resp.text[:300]}"
-                    retry_after = resp.headers.get("retry-after", "")
+                if reply.status in (401, 403):
+                    raise LLMError(f"доступ запрещён (HTTP {reply.status}): проверьте LLM_API_KEY. {reply.text[:200]}")
+                if reply.status == 404:
+                    raise LLMError(f"HTTP 404 на {self.s.chat_url}: проверьте LLM_BASE_URL, LLM_CHAT_PATH "
+                                   f"и LLM_MODEL ({reply.text[:200]})")
+                if reply.status == 429 or reply.status >= 500:
+                    last_error = f"HTTP {reply.status}: {reply.text[:300]}"
+                    retry_after = reply.headers.get("retry-after", "")
                     delay = float(retry_after) if retry_after.replace(".", "", 1).isdigit() else min(2 ** attempts, 10)
-                    log.warning("попытка %d: %s, повтор через %.1fс", attempts, last_error, delay)
+                    log.warning("попытка %d: %s, повтор через %.1fс %s", attempts, last_error, delay, reply.trace)
                     await asyncio.sleep(delay)
                     continue
-                if resp.status_code >= 400:
-                    raise LLMError(f"HTTP {resp.status_code}: {resp.text[:500]}")
+                if reply.status >= 400:
+                    raise LLMError(f"HTTP {reply.status}: {reply.text[:500]} {reply.trace or ''}".strip())
 
-                content = ""
+                content = reply.text
                 try:
-                    content = self._read_content(resp)
+                    if not content:
+                        raise ResponseValidationError(last_error if last_error != "нет ответа" else "пустой ответ")
                     checks = parse_checks(content)
                 except ResponseValidationError as e:
                     last_error = f"ответ не по схеме: {e}"
-                    log.warning("попытка %d: %s", attempts, last_error)
+                    log.warning("попытка %d: %s %s", attempts, last_error, reply.trace)
                     # Даём модели её ответ и описание ошибки, просим исправить
                     if content:
                         messages = messages[:2] + [
@@ -247,12 +307,17 @@ class OpenWebUIClient:
                     "model": self.s.model,
                     "attempts": attempts,
                     "response_format": fmt,
+                    "stream": self.s.stream,
                     "llm_latency_ms": int((time.monotonic() - started) * 1000),
+                    **({"gateway": reply.trace} if reply.trace else {}),
                 }
                 return checks, meta
 
-        if last_error.startswith("ошибка соединения"):
-            last_error += (" — Open WebUI по этому адресу недоступен из контейнера. Проверьте OPENWEBUI_URL: "
-                           "localhost/127.0.0.1 внутри контейнера указывает на сам контейнер; для Open WebUI "
-                           "на этой же машине используйте http://host.docker.internal:<порт>.")
-        raise LLMError(f"LLM не вернула корректный ответ за {attempts} попыт.: {last_error}")
+        if connect_failed and last_error.startswith("не удалось подключиться"):
+            last_error += (" — адрес недоступен из контейнера. Проверьте LLM_BASE_URL; для внутреннего шлюза "
+                           "контейнеру нужен доступ во внутреннюю сеть (VPN, DNS, прокси HTTPS_PROXY).")
+        raise LLMError(f"LLM не вернула корректный ответ за {attempts} попыт.: {last_error} {trace or ''}".strip())
+
+
+# Старое имя — для совместимости
+OpenWebUIClient = LLMClient

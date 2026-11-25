@@ -10,7 +10,7 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 
 from . import local_checks
 from .config import Settings
-from .llm import OpenWebUIClient
+from .llm import LLMClient
 from .prompt import FAILED, SUCCESS, TEST_TYPES
 
 log = logging.getLogger("photo_check")
@@ -46,7 +46,7 @@ def to_jpeg(img: Image.Image, max_side: int, quality: int) -> bytes:
 class PhotoChecker:
     def __init__(self, settings: Settings):
         self.s = settings
-        self.llm = OpenWebUIClient(settings)
+        self.llm = LLMClient(settings)
 
     async def check(self, data: bytes, filename: Optional[str] = None) -> Dict[str, Any]:
         started = time.monotonic()
