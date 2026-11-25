@@ -15,6 +15,8 @@ from .service import InvalidImageError, PhotoChecker
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 settings = load_settings()
+logging.getLogger("photo_check").info("Open WebUI: %s, модель: %s, ключ: %s", settings.base_url, settings.model,
+                                      "задан" if settings.api_key else "НЕ задан")
 checker = PhotoChecker(settings)
 app = FastAPI(title="Photo-API: проверка фото на пропуск", version="1.0")
 
@@ -30,7 +32,7 @@ async def health_llm():
     try:
         models = await checker.llm.list_models()
     except Exception as e:  # noqa: BLE001
-        raise HTTPException(502, f"Open WebUI недоступен: {e}")
+        raise HTTPException(502, f"Open WebUI недоступен по адресу {settings.models_url}: {e!r}")
     ids = [m.get("id") for m in models if isinstance(m, dict)]
     return {"status": "ok" if settings.model in ids else "model_not_found", "model": settings.model, "available": ids}
 

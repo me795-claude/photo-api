@@ -196,7 +196,7 @@ class OpenWebUIClient:
                     resp = await client.post(self.s.chat_url, headers=self._headers(),
                                              json=self._payload(messages, fmt))
                 except httpx.HTTPError as e:
-                    last_error = f"ошибка соединения: {e!r}"
+                    last_error = f"ошибка соединения с {self.s.chat_url}: {e!r}"
                     log.warning("попытка %d: %s", attempts, last_error)
                     await asyncio.sleep(min(2 ** attempts, 10))
                     continue
@@ -251,4 +251,8 @@ class OpenWebUIClient:
                 }
                 return checks, meta
 
+        if last_error.startswith("ошибка соединения"):
+            last_error += (" — Open WebUI по этому адресу недоступен из контейнера. Проверьте OPENWEBUI_URL: "
+                           "localhost/127.0.0.1 внутри контейнера указывает на сам контейнер; для Open WebUI "
+                           "на этой же машине используйте http://host.docker.internal:<порт>.")
         raise LLMError(f"LLM не вернула корректный ответ за {attempts} попыт.: {last_error}")
